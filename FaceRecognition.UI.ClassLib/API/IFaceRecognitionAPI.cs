@@ -18,5 +18,10 @@ namespace FaceRecognition.UI.ClassLib.API
         Task<UploadImagesResponse> UploadStream([AliasAs("image1")] StreamPart stream);
         [Get("/ping")]
         Task<string> Ping();
+        [Delete("/delete")]
+        Task<DeleteEmbeddingsResponse> ResetEmbeddings();
+
+        [Post("/api/align")]
+        Task AlignImages();
     }
 }

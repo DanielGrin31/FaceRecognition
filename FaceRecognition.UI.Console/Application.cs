@@ -1,21 +1,35 @@
 using FaceRecognition.UI.ClassLib.API;
+using FaceRecognition.UI.ClassLib.Services;
+using FaceRecognition.UI.Console.Services;
 using Refit;
 
 public class Application
 {
-    private readonly IFaceRecognitionAPI api;
+    private readonly IOptionHandler handler;
 
-    public Application(IFaceRecognitionAPI api)
+    public Application(IOptionHandler handler)
     {
-        this.api = api;
+        this.handler = handler;
     }
     public async Task StartAsync()
     {
-        string filename="test.png";
-        string imagePath = $"./Data/{filename}"; 
-        FileInfo info=new FileInfo(imagePath);
-       var response= await api.Upload(new FileInfoPart(info,"test1.png"));
-        System.Console.WriteLine("test");
-        // Console.WriteLine(await api.Ping());
+        int choice = 0;
+        while (true)
+        {
+            Console.WriteLine("Please choose an option:");
+            Console.WriteLine("1. Upload test.png");
+            Console.WriteLine("8. Reset Embeddings");
+            Console.WriteLine("9. Exit");
+            string? input = Console.ReadLine();
+            if (int.TryParse(input, out choice))
+            {
+                await handler.HandleOption(choice);
+            }
+            else
+            {
+                Console.WriteLine("Invalid input,try again");
+            }
+        }
+
     }
 }
