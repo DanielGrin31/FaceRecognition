@@ -17,6 +17,8 @@ namespace FaceRecognition.UI.ClassLib
             services.AddRefitClient<IFaceRecognitionAPI>()
             .ConfigureHttpClient(c => c.BaseAddress = new Uri(settings.URL + "/api"));
             services.AddScoped<IImageRepositoryService, ImageRepositoryService>();
+            services.AddScoped<IImageProcessingService, ImageProcessingService>();
+            services.AddScoped<IClusteringService,ClusteringService>();
             return services;
         }
     }

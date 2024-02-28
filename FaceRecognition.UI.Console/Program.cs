@@ -5,10 +5,16 @@ using FaceRecognition.UI.Console.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Refit;
+using Serilog;
 
+// Configure Serilog for logging
+Log.Logger = new LoggerConfiguration()
+    .WriteTo.Console()
+    .CreateLogger();
 
+Log.Information("Starting application");
 var host = CreateHostBuilder(args).Build();
+
 var app = host.Services.GetRequiredService<Application>();
 await app.StartAsync();
 
@@ -23,7 +29,7 @@ static IConfiguration Configure()
 static IHostBuilder CreateHostBuilder(string[] args)
 {
     var configuration = Configure();
-    return Host.CreateDefaultBuilder(args)
+    return Host.CreateDefaultBuilder(args).UseSerilog()
     .ConfigureServices((hostContext, services) =>
     {
         ConfigureServices(services, configuration);
@@ -37,4 +43,7 @@ static void ConfigureServices(IServiceCollection services, IConfiguration config
     services.RegisterAPI(apiSettings);
     services.AddSingleton<IOptionHandler, OptionHandler>();
     services.AddSingleton<Application>();
+    services.AddLogging(builder=>{
+        builder.AddSerilog();
+    });
 }

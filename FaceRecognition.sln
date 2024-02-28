@@ -7,6 +7,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FaceRecognition.UI.ClassLib
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FaceRecognition.UI.Console", "FaceRecognition.UI.Console\FaceRecognition.UI.Console.csproj", "{BE4E6567-F15D-410B-8A97-6F573E469144}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FaceRecognition.UI.Web", "FaceRecognition.UI.Web\FaceRecognition.UI.Web.csproj", "{3967434A-585B-4152-91C8-94FCAFCE557C}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -24,5 +26,9 @@ Global
 		{BE4E6567-F15D-410B-8A97-6F573E469144}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{BE4E6567-F15D-410B-8A97-6F573E469144}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{BE4E6567-F15D-410B-8A97-6F573E469144}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3967434A-585B-4152-91C8-94FCAFCE557C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3967434A-585B-4152-91C8-94FCAFCE557C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3967434A-585B-4152-91C8-94FCAFCE557C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3967434A-585B-4152-91C8-94FCAFCE557C}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

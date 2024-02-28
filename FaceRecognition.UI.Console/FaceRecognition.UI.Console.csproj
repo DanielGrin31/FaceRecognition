@@ -1,20 +1,21 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
-    <ProjectReference Include="..\FaceRecognition.UI.ClassLib\FaceRecognition.UI.ClassLib.csproj"/>
+    <ProjectReference Include="..\FaceRecognition.UI.ClassLib\FaceRecognition.UI.ClassLib.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Hosting" Version="7.0.1"/>
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="7.0.0"/>
-    <PackageReference Include="Refit.HttpClientFactory" Version="7.0.0"/>
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="7.0.1" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="7.0.0" />
+    <PackageReference Include="Refit.HttpClientFactory" Version="7.0.0" />
+    <PackageReference Include="Serilog" Version="3.1.1" />
+    <PackageReference Include="Serilog.Extensions.Hosting" Version="7.0.0" />
+    <PackageReference Include="Serilog.Sinks.Console" Version="5.0.0" />
   </ItemGroup>
-
   <ItemGroup>
-    <None CopyToOutputDirectory="Always" Include="./appsettings.json"/>
+    <None CopyToOutputDirectory="Always" Include="./appsettings.json" />
   </ItemGroup>
-
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net7.0</TargetFramework>
+    <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>

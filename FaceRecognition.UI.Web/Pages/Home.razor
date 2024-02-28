@@ -1,0 +1,162 @@
+﻿@page "/"
+@inject IJSRuntime JS
+@using FaceRecognition.UI.ClassLib.Services
+<PageTitle>Home</PageTitle>
+<div class="content">
+    <h1 class="text-light m-4 text-center user-select-none">Upload and Process Images</h1>
+    <div class="main-container mb-5">
+
+        <form action="/" method="POST" enctype="multipart/form-data" class="w-100">
+            <div class="d-flex align-items-center justify-content-center">
+                @for (int i = 0; i < 2; i++)
+                {
+                    int currentIteration = i;
+                    <div class="d-flex flex-column col-4">
+                        <!-- Drag area  -->
+
+                        <div id=@($"dragarea{i+1}") class="drag-area position-relative d-flex align-items-center 
+                        justify-content-center flex-column rounded-top-0 p-5
+                         @(currentImages.Count>0?"active":"inactive")">
+                            @if (currentImages.Count > i)
+                            {
+
+                                <div class="w-100 bg-dark text-light rounded-top-1 position-absolute top-0 z-3 p-1 
+                                    text-center text-truncate fw-bold">
+                                    @currentImages[i]</div>
+                            }
+                            @if (i == 0 && currentImages.Count == 0)
+                            {
+                                <video id="video" class="position-absolute w-100 d-none h-100 object-fit-fill" autoplay></video>
+                            }
+                            <canvas class="img-fluid d-none position-absolute rounded-top-1 z-2 h-100 w-100" alt="">
+
+                            </canvas>
+                            <InputFile OnChange="@((e)=>ImageInputChanged(e,currentIteration))" name=@($"image{i+1}") hidden
+                                accept="image/*" />
+                            <input type="number" name=@($"face_num{i+1}") accept="image/*" value="-2"
+                                id=@($"face_num_input{i+1}") hidden />
+                            <!-- Dont render the second drag&drop if only 1 image uploaded -->
+                            @if (currentImages.Count == 0 || (currentImages.Count == 1 && i == 1))
+                            {
+                                <div class="d-flex align-items-center justify-content-center 
+                                flex-column" id=@($"dragarea{i+1}-content")>
+                                    <div class=" text-light user-select-none" style="font-size: 100px;">
+                                        <i class="fas fa-cloud-upload-alt"></i>
+                                    </div>
+                                    <header class="text-light user-select-none text-center">
+                                        Drag & Drop to Upload File
+                                    </header>
+                                    <span class="text-light user-select-none">OR</span>
+                                    <button type="button" @onclick="@(()=>BrowseFiles(currentIteration))"
+                                        class="browse-btn btn  btn-light px-4 py-2">
+                                        Browse File
+                                    </button>
+                                </div>
+                            }
+                        </div>
+                        <div class="  ">
+
+                            <div class="form-floating">
+                                <select id=@($"combo-box{i+1}") class="form-select rounded-0 ">
+                                    <option value="-2">All</option>
+                                    @for (int j = 0; j < facesLength[i]; j++)
+                                    {
+                                        <option value=@($"{j}")>Face @(j + 1)</option>
+                                    }
+                                </select>
+                                <label class="" for=@($"combo-box{i+1}")>Select a Face:</label>
+                            </div>
+                            <div class="w-100">
+                                <button id=@($"findBtn{i+1}") class="btn btn-success w-100 rounded-bottom-2 rounded-top-0"
+                                    type="button">show faces</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    @if (i == 0)
+                    {
+                        <!-- Buttons -->
+                        <div class=" d-flex col-2 flex-column align-items-center">
+                    <!-- <input type="submit" name="action" value="Upload" class="submit-btn rounded-3 w-75 m-2" /> -->
+                    @if (currentImages.Count == 0)
+                            {
+                                <button id="startVideoBtn" class="submit-btn rounded-3 w-75 m-2" type="button">Start Video</button>
+                            }
+                            <input type="submit" name="action" value="Detect" class="submit-btn w-75 m-2" />
+                            <input type="submit" name="action" value="Check" class="submit-btn w-75 m-2" />
+                            @if (currentImages.Count == 2)
+                            {
+                                <input type="submit" name="action" value="Compare" class="submit-btn w-75 m-2" />
+                            }
+                            <input type="submit" name="action" value="Clear" class="submit-btn w-75 m-2" />
+
+                        </div>
+                    }
+                }
+            </div>
+        </form>
+    </div>
+
+
+    <div id="messageContainer" style="z-index: 11" class="position-fixed bottom-0 w-25 end-0 p-0"></div>
+</div>
+
+@code {
+    private List<string> currentImages = new List<string>(2);
+    private int[] selectedFaces = new int[2];
+    private int[] facesLength = new int[2];
+    [Inject]
+    public IImageRepositoryService _Repository { get; set; }
+    protected override void OnAfterRender(bool firstRender)
+    {
+        base.OnAfterRender(firstRender);
+    }
+    private async Task BrowseFiles(int inputNum)
+    {
+        await JS.InvokeVoidAsync("browseFiles", inputNum);
+    }
+    private async Task ShowFile(int i)
+    {
+        await JS.InvokeVoidAsync("setCanvasSourceFromInput", i);
+    }
+    private async Task ImageInputChanged(InputFileChangeEventArgs e, int i)
+    {
+        if (e.FileCount > 0)
+        {
+            string fileName = e.File.Name;
+
+            var stream = e.File.OpenReadStream();
+            bool success = await _Repository.UploadImage(stream, fileName);
+            if (success)
+            {
+                await ShowFile(i);
+                if (currentImages.Count > i)
+                {
+                    currentImages[i] = fileName;
+                }
+                else
+                {
+                    currentImages.Add(fileName);
+                }
+            }
+            else
+            {
+
+            }
+        }
+        @* if (e.File.Name is string path)
+{
+string fileName = Path.GetFileName(path.Replace(@"\",@"/"));
+if(currentImages.Count>i)
+{
+currentImages[i]=fileName;
+}
+else
+{
+currentImages.Add(fileName);
+}
+
+} *@
+    }
+
+}
