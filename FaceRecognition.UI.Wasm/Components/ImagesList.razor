@@ -1,0 +1,39 @@
+@using FaceRecognition.UI.ClassLib.Utilities
+@using FaceRecognition.UI.ClassLib.Services
+@inject IImageMetadataService ImageMetadata
+@inject IJSRuntime JS
+@inject ApiSettings settings
+
+@foreach (string image in Images)
+{
+    <div class="col-3 gallery-image justify-content-center ">
+        <div class="d-flex flex-column  position-relative ">
+            <img src=@($"{settings.URL}/static/{EnumMemberNames.GetName(Layout.Models.DetectorName)}/{image}")
+                                                                        @onclick="() => HandleFaceClick(image)"/>
+            @* <img class="position-absolute img-fluid bg-light opacity-25 z-3" src="https://upload.wikimedia.org/wikipedia/commons/thumb/8/82/Check_mark_9x9.svg/2048px-Check_mark_9x9.svg.png"/> *@
+            <p class="text-truncate text-light bg-dark text-center">@image</p>
+        </div>
+    </div>
+}
+@code {
+    [Parameter]
+    public IEnumerable<string>? Images { get; set; }
+    [CascadingParameter] public MainLayoutViewModel? Layout { get; set; }
+
+    private async Task HandleFaceClick(string imageName)
+    {
+        var (fileName, faceNum) = imageName.ExtractImageParams();
+        var faces = await ImageMetadata.GetFaces(fileName, faceNum,false, Layout?.Models ?? new ModelsConfig());
+        var face = faces.FirstOrDefault();
+        if (face == null)
+        {
+            Console.WriteLine("Face is null");
+            return;
+        }
+
+        var path = $"{settings.URL}/pool/{fileName}";
+
+        await JS.InvokeVoidAsync("openFaceImage", face.BBox, faceNum, path);
+    }
+
+}

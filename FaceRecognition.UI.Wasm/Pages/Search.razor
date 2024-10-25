@@ -1,0 +1,195 @@
+﻿@page "/search"
+@inject IJSRuntime JS
+@inherits BasePage
+@using FaceRecognition.UI.ClassLib.Services
+@using FaceRecognition.UI.ClassLib.Utilities
+@using Blazored.LocalStorage
+@using FaceRecognition.UI.ClassLib.Models.EventArgs
+@inject IImageProcessingService ImageProcessing
+@inject IImageClusteringService ImageClustering;
+@inject IImageMetadataService ImageMetadata
+@inject ILocalStorageService LocalStorage
+@inject ApiSettings Settings;
+@implements IDisposable
+
+<PageTitle>Search</PageTitle>
+<div class=" d-flex flex-column mb-5 pb-5">
+    <h1 class="text-light  text-center user-select-none">Find K Similar Images</h1>
+    <div class="main-container">
+        <div class=" d-flex col-4  mx-auto mb-3 justify-content-center align-items-center">
+            <div class="form-floating m-2">
+                <input type="number" id="k_input" min="1" class="form-control" @bind-value="_K"/>
+                <label for="k_input">number of images</label>
+            </div>
+            <button disabled="@(!CanSearch)"  @onclick="SearchSimilar" class="submit-btn rounded-3 w-75 ">Search</button>
+            @if (_Loading)
+            {
+                <div class="spinner-border p-3 mx-2 text-warning" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+            }
+        </div>
+    </div>
+    <div class=" col-4 offset-4">
+        <ImageBox @ref="_ImageBox" @bind-ViewModel="_ViewModel"
+                  LoadingRequested="OnLoadingStartedAsync"
+                  ShowError="ShowError"
+                  FinishLoading="OnLoadingFinishedAsync"
+                  RefreshRequested="OnRefresh" Id="1"/>
+    </div>
+
+    <div class="col-12">
+        <div class="row g-0">
+            @if (_Images != null)
+            {
+                @for (int i = 0; i < _Images.Length; i++)
+                {
+                    var index = i;
+                    <div class="col-3 p-3 d-flex flex-column gallery-image justify-content-center ">
+                        <img src="@($"{Settings.URL}/static/{EnumMemberNames.GetName((Layout?.Models ?? new ModelsConfig()).DetectorName)}/aligned_{_Images[i].FaceNum}_{_Images[i].ImageName}")"
+                             @onclick="() => ShowOffcanvas(_Images[index].FullName)" alt="Face"/>
+                        <p class="text-truncate text-light bg-dark text-center">@_Images[i].FullName</p>
+                    </div>
+                }
+            }
+
+        </div>
+    </div>
+</div>
+
+<ParametersSection>
+    <div class="row">
+        <div class="offset-4 col-2">Similarity Threshold:</div>
+        <div class="col-1 d-flex">
+            <input class="parameter" min="0" max="1" @bind-value="@_SimilarityThreshold"
+                   @bind-value:event="oninput" step="0.05" type="range" id="similarityThreshRange"
+                   name="SimilarityThreshold"/>
+            <output class="ms-1">@_SimilarityThreshold</output>
+        </div>
+    </div>
+    <div class="row">
+        <div class="offset-4 col-2">Quality Threshold:</div>
+        <div class="col-1 d-flex">
+            <input class="parameter" min="0" max="3" @bind-value="@_QualityThreshold"
+                   @bind-value:event="oninput" step="0.1" type="range"
+                   name="QualityThreshold"/>
+            <output class="ms-1">@_QualityThreshold</output>
+        </div>
+    </div>
+</ParametersSection>
+<Modal @ref="_Modal"></Modal>
+<FaceImageOffCanvas OnClusterChanged="ChangeCluster" @ref="_OffCanvas"></FaceImageOffCanvas>
+
+@code {
+    private FaceImageOffCanvas? _OffCanvas;
+    
+    ImageBoxViewModel _ViewModel=new();
+    ImageBox? _ImageBox;
+    private float _SimilarityThreshold = 0.5f;
+    private float _QualityThreshold;
+    private bool CanSearch => !string.IsNullOrEmpty(_ViewModel?.ImgName);
+    private int _K = 5;
+    SimilarImage[]? _Images;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _ViewModel = await LocalStorage.GetItemAsync<ImageBoxViewModel>($"imageBox1") ?? new ImageBoxViewModel();
+        _SimilarityThreshold = await LocalStorage.GetItemAsync<float>("similarity_thresh");
+        _QualityThreshold = await LocalStorage.GetItemAsync<float>("quality_thresh");
+        if (Layout != null)
+            Layout.ImageBoxChanged += OnImageBoxChanged;
+        await base.OnInitializedAsync();
+    }
+
+
+    private async Task SearchSimilar()
+    {
+        if (!CanSearch)
+            return;
+
+        await OnLoadingStartedAsync();
+        var result = await ImageProcessing
+            .GetKSimilarImages(_ViewModel!.ImgName, _K, _ViewModel.FaceNum, _SimilarityThreshold, _QualityThreshold
+                , Layout?.Models ?? new ModelsConfig());
+        await SaveState();
+        if (result.IsT1)
+        {
+            await ShowError(result.AsT1);
+        }
+
+        _Images = result.AsT0;
+        if (_Images is null || _Images.Length == 0)
+        {
+            await _Modal.Show([], ["No matching images were found with sufficient similarity!"]);
+        }
+
+        await OnLoadingFinishedAsync();
+    }
+
+
+
+
+    protected override async Task SaveState()
+    {
+        await LocalStorage.SetItemAsync($"imageBox1", _ViewModel);
+        await LocalStorage.SetItemAsync("similarity_thresh", _SimilarityThreshold);
+        await LocalStorage.SetItemAsync("quality_thresh", _QualityThreshold);
+        await LocalStorage.SetItemAsync("numberOfImages", _K);
+    }
+
+    private async Task OnRefresh()
+    {
+        if (!CanSearch)
+        {
+            var second = await LocalStorage.GetItemAsync<ImageBoxViewModel>($"imageBox2");
+            if (second != null)
+            {
+                _ViewModel?.CopyFrom(second);
+                await LocalStorage.RemoveItemAsync("imageBox2");
+            }
+        }
+
+        await SaveState();
+        StateHasChanged();
+    }
+
+    private async void OnImageBoxChanged(object? sender, ImageBoxChangedEventArgs e)
+    {
+        if (e.Index == 0)
+        {
+            _ViewModel?.CopyFrom(e.ViewModel);
+            await SaveState();
+            await _ImageBox!.LoadImage();
+            _Images = null;
+            StateHasChanged();
+        }
+    }
+
+
+    private async Task ChangeCluster(ClusterChangedEventArgs e)
+    {
+        var success = await ImageClustering.ChangeGroupForFace(e.ImgName,e.FaceNum,e.NewClusterId, Layout!.Models);
+        string fullName=e.ImgName.ConstructImagePath(e.FaceNum);
+        StateHasChanged();
+    }
+    private async Task ShowOffcanvas(string imageName)
+    {
+        var (fileName, faceNum) = imageName.ExtractImageParams();
+        var faces = await ImageMetadata.GetFaces(fileName, faceNum,true, Layout?.Models ?? new ModelsConfig());
+        var face = faces.FirstOrDefault();
+        if (face == null)
+        {
+            Console.WriteLine("Face is null");
+            return;
+        }
+        await _OffCanvas.Show(imageName,face);
+    }
+
+    public override void Dispose()
+    {
+        if (Layout != null) 
+            Layout.ImageBoxChanged -= OnImageBoxChanged;
+        base.Dispose();
+    }
+
+}

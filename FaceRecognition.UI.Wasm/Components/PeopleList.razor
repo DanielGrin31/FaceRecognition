@@ -1,0 +1,34 @@
+@using FaceRecognition.UI.ClassLib.Utilities
+@using FaceRecognition.UI.ClassLib.Services
+@inject IImageMetadataService ImageMetadata
+@inject IJSRuntime JS
+@inject ApiSettings settings
+
+@foreach (var (clusterId,thumbnail) in Faces)
+{
+    <div class="col-3 gallery-image justify-content-center ">
+        <div class="d-flex flex-column  position-relative ">
+            @if (SelectedPeople != null && SelectedPeople.Contains(clusterId))
+            {
+                <p class="text-truncate text-light bg-dark text-center">SELECTED</p>
+            }
+            <img src=@($"{settings.URL}/static/{EnumMemberNames.GetName(Layout.Models.DetectorName)}/{thumbnail}")
+                                @onclick="() => HandleFaceClick(clusterId)"/>
+            <p class="text-truncate text-light bg-dark text-center">@clusterId</p>
+        </div>
+    </div>
+}
+@code {
+    [Parameter]
+    public List<string>? SelectedPeople { get; set; }
+    [Parameter]
+    public IEnumerable<KeyValuePair<string,string>>? Faces { get; set; }
+    [CascadingParameter] public MainLayoutViewModel? Layout { get; set; }
+    [Parameter]
+    public EventCallback<string> OnClusterClicked { get; set; }
+    private Task HandleFaceClick(string clusterId)
+    {
+        return OnClusterClicked.InvokeAsync(clusterId);
+    }
+
+}

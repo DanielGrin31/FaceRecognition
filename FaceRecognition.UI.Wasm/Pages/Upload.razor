@@ -1,0 +1,64 @@
+@page "/upload"
+@using FaceRecognition.UI.ClassLib.Services
+@inherits BasePage
+@inject IImageRepositoryService ImageRepo
+<PageTitle>Home</PageTitle>
+<h1 class="text-light m-4 text-center -select-none">Upload</h1>
+<div class="main-container mb-5">
+    <div class="w-100">
+
+        <div class="d-flex align-items-center justify-content-center 
+            flex-column">
+            <div class="row g-3 mb-3 align-items-center" method="POST" action="/download">
+
+                <div class="col-auto">
+                    <label for="websiteUrl" class="visually-hidden">Website Url</label>
+                </div>
+                <div class="col-auto">
+                    <input type="url" class="form-control" id="websiteUrl" name="website_url">
+                </div>
+                <div class="col-auto">
+                    <button type="submit" class="btn btn-light browse-btn ">Download</button>
+                </div>
+            </div>
+
+            <header class="h4 text-light user-select-none text-center">
+                Upload From URL
+            </header>
+            <span class="h3 text-light user-select-none">OR</span>
+            <button id="zipBtn" type="button" onclick="clickInputFile(event.target)" class="browse-btn btn  btn-light px-4 py-2">
+                Upload zip
+            </button>
+            <input hidden name="zip_file" id="zipFileInput" type="file" accept=".zip,.rar,.7zip"/>
+        </div>
+        <InputFile type="file" name="image" accept=".zip,.rar,.7zip" hidden OnChange="FileUploaded"/>
+
+    </div>
+</div>
+<Modal @ref="_Modal"></Modal>
+
+@code {
+
+    private async Task FileUploaded(InputFileChangeEventArgs e)
+    {
+        if (!e.File.Name.ToLower().EndsWith(".zip"))
+        {
+            await ShowError("Only zip files can be uploaded!");
+            return;
+        }
+
+        const long maxSize = 1024 * 1024 * 10;
+        var stream = e.File.OpenReadStream(maxSize);
+        var result=await ImageRepo.UploadZip(stream,e.File.Name,Layout.Models);
+        if (result.IsT1)
+        {
+            await ShowError(result.AsT1);
+        }
+        else
+        {
+            await _Modal.Show([$"{result.AsT0.Images.Count} Images Uploaded",..result.AsT0.Images], []);
+        }
+
+    }
+
+}

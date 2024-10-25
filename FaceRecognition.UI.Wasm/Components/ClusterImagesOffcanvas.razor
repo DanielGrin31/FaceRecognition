@@ -1,0 +1,50 @@
+﻿@using FaceRecognition.UI.ClassLib.Utilities
+@inject IJSRuntime JS
+@inject ApiSettings Settings
+
+<div class="offcanvas offcanvas-bottom" tabindex="-1" id="offcanvasBottom" aria-labelledby="offcanvasBottomLabel">
+    <div class="offcanvas-header">
+        <div class="d-flex align-items-center">
+            <h5 class="offcanvas-title" id="offcanvasBottomLabel">@_ClusterId</h5>
+            <button class="btn btn-dark btn-outline-info mx-3" @onclick="KinshipClicked">Compare Kinship with: </button>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+    </div>
+    <div class="offcanvas-body small">
+        <div id="imagesContainer" class="row">
+            @if (_Images != null)
+            {
+                @foreach (var image in _Images)
+                {
+                    <div class=" col-1 d-flex flex-column justify-content-center m-0">
+                        <img src="@($"{Settings.URL}/static/{EnumMemberNames.GetName(Layout!.Models.DetectorName)}/{image}")"
+                             alt=""/>
+                        <p class="text-truncate text-light bg-dark text-center">@image</p>
+                    </div>
+                }
+            }
+        </div>
+    </div>
+</div>
+
+
+@code {
+    private string? _ClusterId;
+    private IEnumerable<string>? _Images;
+    [CascadingParameter] public MainLayoutViewModel? Layout { get; set; }
+    [Parameter]
+    public EventCallback<string> OnKinshipCompareClicked { get; set; }
+
+    public async Task Show(string clusterId, IEnumerable<string> images)
+    {
+        _Images = images;
+        _ClusterId = clusterId;
+        StateHasChanged();
+        await JS.InvokeVoidAsync("showOffCanvas");
+    }
+
+    private async Task KinshipClicked()
+    {
+        await OnKinshipCompareClicked.InvokeAsync(_ClusterId);
+    }
+}

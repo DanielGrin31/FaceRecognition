@@ -1,0 +1,249 @@
+﻿@inject IJSRuntime JS
+@inject IImageRepositoryService Repo
+@inject IImageMetadataService Metadata
+@inject ApiSettings Settings
+@inject ILocalStorageService LocalStorage
+@using Blazored.LocalStorage
+@using FaceRecognition.UI.ClassLib.Models.EventArgs
+@using FaceRecognition.UI.ClassLib.Models.Responses
+@using FaceRecognition.UI.ClassLib.Services
+@using FaceRecognition.UI.ClassLib.Utilities
+@implements IDisposable
+
+<div class="d-flex flex-column ">
+    <!-- Drag area  -->
+    <div id="dragarea-@Id" class="drag-area position-relative d-flex align-items-center 
+    justify-content-center flex-column rounded-top-0 p-5
+    @(IsActive ? "active" : "inactive")">
+        <!-- Checkbox positioned at the top left of the drag area -->
+        @if (IsActive)
+        {
+            <div class="w-100 bg-dark rounded-top-1 position-absolute top-0 z-3 p-1 text-center">
+                <button id="improveBtn" type="button"
+                        class="fw-bold text-light py-0 position-absolute top-0 start-0 btn btn-success h-100 rounded-0">
+                    @((ViewModel?.ImgName ?? "").StartsWith("enhanced_") ? "Unimprove" : "Improve")
+                </button>
+                <span class="fw-bold text-truncate text-light fs-6">@ViewModel?.ImgName</span>
+                <button id="clearBtn" @onclick="OnClearClicked" type="button"
+                        class="fw-bold text-light py-0 position-absolute top-0 end-0 btn btn-danger h-100 rounded-0">
+                    X
+                </button>
+            </div>
+        }
+        else
+        {
+            <video id="video" class="position-absolute w-100 d-none h-100 object-fit-fill" autoplay></video>
+            <div class="d-flex align-items-center justify-content-center 
+                flex-column" id="dragarea-content">
+                <div class=" text-light user-select-none" style="font-size: 100px;">
+                    <i class="fas fa-cloud-upload-alt"></i>
+                </div>
+
+                <header class="text-light user-select-none text-center">
+                    Drag & Drop to Upload File
+                </header>
+                <span class="text-light user-select-none">OR</span>
+                <button type="button" onclick="clickInputFile(event.target)" class="browse-btn btn  btn-light px-4 py-2">
+                    Browse File
+                </button>
+            </div>
+        }
+        <canvas class="img-fluid d-none position-absolute rounded-top-1 z-2 h-100 w-100" alt=""></canvas>
+
+        <InputFile type="file" name="image" accept="image/*" hidden OnChange="FileUploaded"/>
+
+
+    </div>
+    <div>
+        <div class="form-floating">
+            <InputSelect ValueChanged="value => FaceSelected(value)"
+                         ValueExpression="@(() => ViewModel!.FaceNum)" TValue="int"
+                         Value="@ViewModel!.FaceNum" id="combo-box" class="form-select rounded-0 ">
+                <option value="-2">All</option>
+                @for (var j = 0; j < ViewModel.FacesLength; j++)
+                {
+                    <option value="@(j)">Face @(j + 1)</option>
+                }
+            </InputSelect>
+            <label class="" for="combo-box">Select a Face:</label>
+        </div>
+        <div class="w-100">
+            @if (IsActive)
+            {
+                <button id="findBtn" @onclick="FindFaces" class="btn btn-success w-100 rounded-0" type="button">
+                    show
+                    faces
+                </button>
+                <button id="landmarksBtn" @onclick="ShowLandmarks" class="btn btn-warning  w-100 rounded-bottom-2 rounded-top-0" type="button">
+                    show
+                    landmarks
+                </button>
+            }
+
+        </div>
+    </div>
+</div>
+
+@code {
+
+    private bool IsActive => !string.IsNullOrEmpty(ViewModel?.ImgName ?? "");
+    private bool _Loaded = false;
+    [Parameter] public string Id { get; set; } = "";
+    [Parameter] public ImageBoxViewModel? ViewModel { get; set; }
+    [Parameter] public EventCallback<ImageBoxViewModel> ViewModelChanged { get; set; }
+    [Parameter] public EventCallback RefreshRequested { get; set; }
+    [Parameter] public EventCallback LoadingRequested { get; set; }
+    [Parameter] public EventCallback FinishLoading { get; set; }
+    [Parameter] public EventCallback<Error> ShowError { get; set; }
+    [CascadingParameter] public MainLayoutViewModel? Layout { get; set; }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_Loaded && IsActive)
+        {
+            await LoadImage();
+        }
+
+        await base.OnAfterRenderAsync(firstRender);
+    }
+
+    protected override void OnInitialized()
+    {
+        if (Layout != null)
+            Layout.DetectorChanged += SetDetector;
+        base.OnInitialized();
+    }
+
+    public async Task FaceSelected(int value)
+    {
+        ViewModel!.FaceNum = value;
+        await LoadImage();
+    }
+
+    public async Task UpdateFromResponse(UploadImagesResponse response)
+    {
+        if (response.Images.Count == 0)
+        {
+            return;
+        }
+
+        ViewModel!.DetectorIndices = response.DetectorIndices[0];
+        ViewModel.ImgName = response.Images[0];
+        ViewModel.FacesLength = response.DetectorIndices[0][Layout?.Models.DetectorName ?? DetectorName.eran_retina].Length;
+        ViewModel.FaceNum = -2;
+        await LoadImage();
+        @* var invalid_images = response.invalid_images; *@
+    }
+
+    private async Task LoadImage(int faceNum)
+    {
+        string url;
+        if (ViewModel == null || string.IsNullOrEmpty(ViewModel.ImgName))
+        {
+            return;
+        }
+
+        if (faceNum >= 0 && faceNum < ViewModel.FacesLength)
+        {
+            url = Settings.URL + $"/static/{EnumMemberNames.GetName(Layout?.Models.DetectorName ?? DetectorName.eran_retina)}/aligned_{faceNum}_{ViewModel.ImgName}";
+        }
+        else
+        {
+            url = Settings.URL + $"/pool/{ViewModel.ImgName}";
+        }
+
+        await JS.InvokeVoidAsync("window.loadImage", Id, url);
+        _Loaded = true;
+    }
+
+    public Task LoadImage()
+    {
+        return LoadImage(ViewModel?.FaceNum ?? -2);
+    }
+
+    private async Task FileUploaded(InputFileChangeEventArgs e)
+    {
+        const long maxSize = 1024 * 1024 * 10;
+        await LoadingRequested.InvokeAsync();
+        var stream = e.File.OpenReadStream(maxSize);
+        var result = await Repo.UploadImage(stream, e.File.Name, Layout?.Models ?? new ModelsConfig());
+        if (result.IsT0)
+        {
+            await UpdateFromResponse(result.AsT0);
+            await RefreshRequested.InvokeAsync();
+        }
+        else
+        {
+            await ShowError.InvokeAsync(result.AsT1);
+        }
+
+        await FinishLoading.InvokeAsync();
+    }
+
+    public async Task OnClearClicked()
+    {
+        ViewModel!.FaceNum = -2;
+        ViewModel.FacesLength = 0;
+        ViewModel.DetectorIndices.Clear();
+        ViewModel.ImgName = "";
+        await JS.InvokeVoidAsync("unloadImage", Id);
+        _Loaded = false;
+        await RefreshRequested.InvokeAsync();
+    }
+
+    private async Task FindFaces()
+    {
+        if (Layout != null && ViewModel != null)
+        {
+            var faces = await Metadata.GetFaces(ViewModel.ImgName, ViewModel.FaceNum, false, Layout.Models);
+            await LoadImage(-2);
+            await JS.InvokeVoidAsync("drawBBox", Id, faces.Select(f => f.BBox).ToArray(),
+                ViewModel.FaceNum);
+            Console.WriteLine(faces);
+        }
+    }
+
+    private async Task ShowLandmarks()
+    {
+        if (Layout != null && ViewModel != null)
+        {
+            var faces = await Metadata.GetFaces(ViewModel.ImgName, ViewModel.FaceNum, false, Layout.Models);
+            await LoadImage();
+            await JS.InvokeVoidAsync("drawLandmarks", Id, faces.Select(f => f.Landmarks).ToArray());
+            Console.WriteLine(faces);
+        }
+    }
+
+    private async void SetDetector(object? sender, DetectorChangedEventArgs e)
+    {
+        if (ViewModel == null || !ViewModel.DetectorIndices.TryGetValue(e.New, out var newIndices)) return;
+        if (!ViewModel.DetectorIndices.TryGetValue(e.Old, out var oldIndices)) return;
+        var oldFace = oldIndices[ViewModel.FaceNum];
+        ViewModel.FacesLength = newIndices.Length;
+        ViewModel.FaceNum = Math.Min(Array.IndexOf(newIndices, oldFace), ViewModel.FacesLength);
+
+        Console.WriteLine("OLD:");
+        Array.ForEach(oldIndices, Console.Write);
+        Console.WriteLine("NEW:");
+        Array.ForEach(newIndices, Console.Write);
+
+        await LoadImage();
+    }
+
+    private void ReleaseUnmanagedResources()
+    {
+        if (Layout != null) Layout.DetectorChanged -= SetDetector;
+    }
+
+    public void Dispose()
+    {
+        ReleaseUnmanagedResources();
+        GC.SuppressFinalize(this);
+    }
+
+    ~ImageBox()
+    {
+        ReleaseUnmanagedResources();
+    }
+
+}

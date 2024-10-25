@@ -1,0 +1,136 @@
+﻿@inherits LayoutComponentBase
+@using FaceRecognition.UI.ClassLib.Utilities;
+@using FaceRecognition.UI.ClassLib.Services
+@inject Blazored.LocalStorage.ILocalStorageService localStorage
+@inject IJSRuntime JS
+@inject IImageMetadataService Metadata
+@inject ApiSettings settings
+
+<PageTitle>FaceRecognition.UI.Web</PageTitle>
+<div id="faceActionsMenu" class="context-menu">
+    <button onclick="setAsImage(0)">Set as Image 1</button>
+    <button onclick="setAsImage(1)">Set as Image 2</button>
+</div>
+<div class="">
+    <main>
+        <div class="content">
+            <nav class=" navbar navbar-expand-lg bg-body-tertiary">
+                <div class="container-fluid">
+                    <a class="navbar-brand p-0 me-1" href="/">
+                        <img width="40" height="40" src="images/logo_face.png" alt="Logo"/>
+                    </a>
+                    <button class="navbar-toggler" type="button" data-bs-toggle="collapse"
+                        data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent"
+                        aria-expanded="false" aria-label="Toggle navigation">
+                        <span class="navbar-toggler-icon"></span>
+                    </button>
+                    <div class="collapse navbar-collapse" id="navbarSupportedContent">
+                        <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                            <li class="nav-item">
+                                <NavLink class="nav-link "  aria-current="page" href="/"><span class="oi oi-home"
+                                        aria-hidden="true"></span> Home</NavLink>
+                            </li>
+                            <li class="nav-item">
+                                <NavLink class="nav-link" href="/search">Search</NavLink>
+                            </li>
+                            <li class="nav-item">
+                                <NavLink class="nav-link" href="/clustering">Clustering</NavLink>
+                            </li>
+                            <li class="nav-item">
+                                <NavLink class="nav-link" href="/check_family">Check Family Relations</NavLink>
+                            </li>
+                            <li class="nav-item">
+                                <NavLink class="nav-link" href="/upload">Upload</NavLink>
+                            </li>
+                            <li class="nav-item">
+                                <NavLink class="nav-link" href="/gallery">Gallery</NavLink>
+                            </li>
+                        </ul>
+                        <div class="d-flex align-items-center">
+                            <span class="me-1">Detector:</span>
+                            <select class="form-select me-2" name="detector_name" @onchange="DetectorNameChanged"
+                                id="detectorNameSelect" aria-label="Floating label select">
+                                @{
+                                    var selectedDetector = EnumMemberNames.GetName(ViewModel.Models.DetectorName);
+                                }
+                                @foreach (DetectorName detectorName in Enum.GetValues(typeof(DetectorName)))
+                                {
+                                    var option = EnumMemberNames.GetName(detectorName);
+                                    <option selected="@(option==selectedDetector)" value="@option">@detectorName</option>
+                                }
+                            </select>
+                            <span class="me-1">Embedder:</span>
+                            <select class="form-select" name="embedder_name" @onchange="EmbedderNameChanged"
+                                id="embedderNameSelect" aria-label="Floating label select ">
+                                @{
+                                    var selectedEmbedder = EnumMemberNames.GetName(ViewModel.Models.EmbedderName);
+                                }
+                                @foreach (EmbedderName embedderName in Enum.GetValues(typeof(EmbedderName)))
+                                {
+                                    var option = EnumMemberNames.GetName(embedderName);
+
+
+                                    <option value="@option" selected="@(option==selectedEmbedder)">@embedderName</option>
+                                }
+
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </nav>
+            <CascadingValue Value="ViewModel">
+                @Body
+            </CascadingValue>
+        </div>
+    </main>
+</div>
+    
+@code {
+    [Inject]
+    public MainLayoutViewModel? ViewModel { get; set; }
+    
+    protected override async Task OnInitializedAsync()
+    {
+        var read = await localStorage.GetItemAsync<MainLayoutViewModel>("layoutVM") ;
+        if (read is not null)
+        {
+            ViewModel!.Models = read.Models;
+        }
+        await JS.InvokeVoidAsync("setupLayout",  DotNetObjectReference.Create(this),settings.URL);
+    }
+    [JSInvokable]
+    public async Task SetImage(string imgName,int idx )
+    {
+        var (fileName, faceNum) = imgName.ExtractImageParams();
+
+        Dictionary<DetectorName,int[]> indices= await Metadata.GetIndices(fileName);
+        ImageBoxViewModel vm = new ImageBoxViewModel()
+        {
+            DetectorIndices = indices,
+            FaceNum = faceNum,
+            FacesLength = indices[ViewModel.Models.DetectorName].Length,
+            ImgName = fileName
+        };
+        ViewModel.OnImageBoxChanged(idx,vm)    ;
+
+    }
+
+    private async Task DetectorNameChanged(ChangeEventArgs e)
+    {
+        var newValue = EnumMemberNames.ParseEnum<DetectorName>(e.Value.ToString());
+        var oldValue = ViewModel.Models.DetectorName;
+        ViewModel.Models.DetectorName=newValue;
+        await localStorage.SetItemAsync("layoutVM", ViewModel);
+        ViewModel.OnDetectorChanged(oldValue,newValue);
+        StateHasChanged();
+    }
+    private async Task EmbedderNameChanged(ChangeEventArgs e)
+    {
+        var newValue = EnumMemberNames.ParseEnum<EmbedderName>(e.Value.ToString());
+        var oldValue = ViewModel.Models.EmbedderName;
+        ViewModel.Models.EmbedderName=newValue;
+        await localStorage.SetItemAsync("layoutVM", ViewModel);
+        ViewModel.OnEmbedderChanged(oldValue,newValue);
+        StateHasChanged();
+    }
+}

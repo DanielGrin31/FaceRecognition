@@ -1,0 +1,238 @@
+﻿@page "/clustering"
+@inject IJSRuntime JS
+@inherits BasePage
+@using FaceRecognition.UI.ClassLib.Services
+@using Blazored.LocalStorage
+@using FaceRecognition.UI.ClassLib.Models.EventArgs
+@using FaceRecognition.UI.ClassLib.Utilities
+@inject IImageMetadataService ImageMetadata
+@inject IImageClusteringService ImageClustering;
+@inject ILocalStorageService LocalStorage
+@inject ApiSettings settings;
+
+<PageTitle>Clustering</PageTitle>
+
+<h1 class="text-light p-4 text-center user-select-none">Cluster Images</h1>
+<div class="main-container d-flex mb-5 position-relative">
+    <button class="submit-btn rounded-3 w-75 m-2" @onclick="ClusterImages">Cluster Images</button>
+    <button class="submit-btn rounded-3 w-75 m-2" @onclick="GetGroups">Get Groups</button>
+</div>
+<div class="row  position-relative pb-5 m-2" style="margin-bottom: 100px !important">
+    <div class="col-12">
+
+        @if (Groups is not null)
+        {
+            @foreach (var (groupId, faces) in Groups)
+            {
+                <div class="d-flex  align-items-center h3 text-black">
+                    <div>Id: </div>
+                    @if (_EditedText == groupId)
+                    {
+                        <input @bind="_TempText" @bind:event="oninput" />
+                        <button class="btn btn-success" @onclick="() => ConfirmClicked(groupId)">Confirm</button>
+                        <button class="btn btn-danger" @onclick="CancelClicked">Cancel</button>
+                    }
+                    else
+                    {
+                        <div>@groupId</div>
+                        <div class="editButton btn px-1" @onclick="() => EditBtnClicked(groupId)">
+                            <i class="fas fa-pen "></i>
+                        </div>
+                    }
+                </div>
+                <div class="row">
+            @foreach (var face in faces)
+                    {
+                        <div class="col-3 gallery-image d-flex flex-column justify-content-center m-0">
+                            <img src="@($"{settings.URL}/static/{EnumMemberNames.GetName(Layout.Models.DetectorName)}/{face}")"
+                                @onclick="() => ShowOffcanvas(face)" />
+                            <p class="text-truncate">@face</p>
+                        </div>
+                    }
+
+                </div>
+            }
+        }
+
+    </div>
+</div>
+
+<ParametersSection>
+    <div class="row">
+        <div class="offset-4 col-2">Similarity Threshold:</div>
+        <div class="col-1 d-flex">
+            <input class="parameter" min="0" max="1" step="0.01" @bind-value="_SimilarityThreshold"
+                @bind-value:event="oninput" type="range" />
+            <output class="ms-1">@_SimilarityThreshold</output>
+        </div>
+    </div>
+    <div class="row">
+        <div class="offset-4 col-2">Min Group Size:</div>
+        <div class="col-1 d-flex">
+            <input class="parameter" min="1" max="30" step="1" type="range" @bind-value:event="oninput"
+                @bind-value="_MinGroupSize" />
+            <output class="ms-1">@_MinGroupSize</output>
+        </div>
+    </div>
+    <div class="row">
+        <div class="offset-4 col-2">Quality Threshold:</div>
+        <div class="col-1 d-flex">
+            <input class="parameter" min="0" max="3" @bind-value="@_QualityThreshold" @bind-value:event="oninput"
+                step="0.1" type="range" name="QualityThreshold" />
+            <output class="ms-1">@_QualityThreshold</output>
+        </div>
+    </div>
+    <div class="row mt-1">
+        <div class="offset-5 col-3 d-flex">
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" @bind="_Retrain" role="switch"
+                    id="ClusterByFamilySwitch">
+                <label class="form-check-label" for="ClusterByFamilySwitch">Retrain</label>
+            </div>
+        </div>
+    </div>
+</ParametersSection>
+
+<Modal @ref="_Modal"></Modal>
+<FaceImageOffCanvas OnClusterChanged="ChangeCluster" @ref="_OffCanvas"></FaceImageOffCanvas>
+
+
+@code {
+    private FaceImageOffCanvas? _OffCanvas;
+
+    private int _MinGroupSize = 5;
+    private string? _EditedText;
+    private string? _TempText;
+    private float _SimilarityThreshold = 0.5f;
+    private int k = 5;
+    private float _QualityThreshold = 0;
+    private bool _Retrain = false;
+
+
+    Dictionary<string, List<string>>? Groups;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _SimilarityThreshold = await LocalStorage.GetItemAsync<float>("similarity_thresh");
+        _QualityThreshold = await LocalStorage.GetItemAsync<float>("quality_thresh");
+        _MinGroupSize = Math.Max(1, await LocalStorage.GetItemAsync<int>("min_group_size"));
+        _Retrain = await LocalStorage.GetItemAsync<bool>("retrain");
+        await base.OnInitializedAsync();
+    }
+
+
+    private async Task SaveState()
+    {
+        await LocalStorage.SetItemAsync("similarity_thresh", _SimilarityThreshold);
+        await LocalStorage.SetItemAsync("min_group_size", _MinGroupSize);
+        await LocalStorage.SetItemAsync("quality_thresh", _QualityThreshold);
+        await LocalStorage.SetItemAsync("retrain", _Retrain);
+    }
+    private async Task ShowOffcanvas(string imageName)
+    {
+        var (fileName, faceNum) = imageName.ExtractImageParams();
+        var faces = await ImageMetadata.GetFaces(fileName, faceNum,true, Layout?.Models ?? new ModelsConfig());
+        var face = faces.FirstOrDefault();
+        if (face == null)
+        {
+            Console.WriteLine("Face is null");
+            return;
+        }
+        await _OffCanvas.Show(imageName,face);
+    }
+
+
+    private async Task ClusterImages()
+    {
+        await OnLoadingStartedAsync();
+        var result = await ImageClustering.ClusterFaces(1 - _SimilarityThreshold,
+        _MinGroupSize, (float)_QualityThreshold,
+        _Retrain, Layout?.Models ?? new ModelsConfig());
+        if (result.IsT1)
+        {
+            await ShowError(result.AsT1);
+        }
+        else
+        {
+            Groups = result.AsT0;
+        }
+
+        await SaveState();
+        await OnLoadingFinishedAsync();
+    }
+
+    private async Task GetGroups()
+    {
+        await OnLoadingStartedAsync();
+        var result = await ImageClustering.GetGroups(Layout?.Models ?? new ModelsConfig());
+        if (result.IsT1)
+        {
+            await ShowError(result.AsT1);
+        }
+        else
+        {
+            Groups = result.AsT0;
+        }
+
+        await SaveState();
+        await OnLoadingFinishedAsync();
+    }
+
+    private void EditBtnClicked(string clusterId)
+    {
+        _EditedText = clusterId;
+        _TempText = clusterId;
+        StateHasChanged();
+    }
+
+    private void CancelClicked()
+    {
+        _EditedText = null;
+        StateHasChanged();
+    }
+    private async Task ChangeCluster(ClusterChangedEventArgs e)
+    {
+        var success = await ImageClustering.ChangeGroupForFace(e.ImgName,e.FaceNum,e.NewClusterId, Layout!.Models);
+        string fullName=e.ImgName.ConstructImagePath(e.FaceNum);
+        Groups[e.OldClusterId].Remove(fullName);
+        if (Groups[e.OldClusterId].Count == 0)
+        {
+            Groups.Remove(e.OldClusterId);
+        }
+        if (Groups.ContainsKey(e.NewClusterId))
+        {
+            Groups[e.NewClusterId].Add(fullName);
+        }
+        else
+        {
+            Groups[e.NewClusterId] = [fullName];
+        }
+        StateHasChanged();
+        
+    }
+    private async Task ConfirmClicked(string oldName)
+    {
+        var success = await ImageClustering.ChangeGroupName(oldName, _TempText!, Layout!.Models);
+        if (success.IsT1)
+        {
+            await ShowError(success.AsT1);
+        }
+        else if (success.AsT0.Length>0)
+        {
+            if (Groups != null && _TempText != null && _EditedText != null)
+            {
+                Groups[_TempText] = success.AsT0.ToList();
+                Groups?.Remove(_EditedText);
+            }
+
+            _EditedText = null;
+        }
+        else
+        {
+            await ShowError(new Error("Failed Unexpectedly"));
+        }
+
+        StateHasChanged();
+    }
+
+}

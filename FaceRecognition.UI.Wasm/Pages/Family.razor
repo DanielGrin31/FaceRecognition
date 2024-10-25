@@ -1,0 +1,207 @@
+﻿@page "/check_family"
+@inject IJSRuntime JS
+@inherits BasePage
+@implements IDisposable
+@using FaceRecognition.UI.ClassLib.Models.Responses
+@using FaceRecognition.UI.ClassLib.Services
+@using System.Text.Json;
+@using Blazored.LocalStorage
+@using FaceRecognition.UI.ClassLib.Models.EventArgs
+@using FaceRecognition.UI.ClassLib.Utilities
+@inject IImageProcessingService ImageProcessing
+@inject ILocalStorageService LocalStorage
+
+
+<PageTitle>Check Family</PageTitle>
+<div class=" d-flex flex-column">
+    <h1 class="text-light p-4 text-center user-select-none">Check Family Relations</h1>
+    <div class="main-container">
+        <div class="w-100 h-100 d-flex flex-column">
+            <div class="d-flex align-items-center justify-content-center flex-grow-1">
+                <div class="col-4">
+                    <ImageBox @ref="_ImageBoxes[0]" @bind-ViewModel="_ViewModels[0]"
+                              LoadingRequested="OnLoadingStartedAsync"
+                              FinishLoading="OnLoadingFinishedAsync"
+                              RefreshRequested="OnRefresh" Id="1"/>
+                </div>
+                <!--add the  Buttons for the main page  -->
+                <div class=" d-flex col-2 flex-column align-items-center">
+                    @if (_Loading)
+                    {
+                        <div class="spinner-border text-warning" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                    }
+
+                    @if (ImageCount < 2)
+                    {
+                        <button id="startVideoBtn" @onclick="StartVideoCapture" class="submit-btn rounded-3 w-75 m-2"
+                                type="button">
+                            Start Video
+                        </button>
+                    }
+                    else
+                    {
+                        <select class="form-select w-75 m-2" name="embedder_name" @bind="_KinshipEmbedderName"
+                                id="embedderNameSelect" aria-label="Floating label select ">
+                            @foreach ((EmbedderName embedderName,string memberName) in EmbedderNameHelper.GetKinshipEmbedders())
+                            {
+                                <option value="@memberName">@embedderName</option>
+                            }
+                        </select>
+                        <button name="action" @onclick="CompareFamily" class="submit-btn w-75 m-2">Compare</button>
+                    }
+                </div>
+                <div class="col-4">
+                    <ImageBox @ref="_ImageBoxes[1]" @bind-ViewModel="_ViewModels[1]"
+                              LoadingRequested="OnLoadingStartedAsync"
+                              FinishLoading="OnLoadingFinishedAsync"
+                              RefreshRequested="OnRefresh" Id="2"/>
+                </div>
+            </div>
+
+            <ParametersSection>
+                <div class="row">
+                    <div class="offset-4 col-2">Similarity Threshold:</div>
+                    <div class="col-1 d-flex">
+                        <input class="parameter" min="0" max="1" @bind-value="@_SimilarityThreshold"
+                               @bind-value:event="oninput" step="0.05" type="range" id="similarityThreshRange"
+                               name="SimilarityThreshold"/>
+                        <output class="ms-1">@_SimilarityThreshold</output>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="offset-4 col-2">Quality Threshold:</div>
+                    <div class="col-1 d-flex">
+                        <input class="parameter" min="0" max="3" @bind-value="@_QualityThreshold"
+                   @bind-value:event="oninput" step="0.1" type="range"
+                               name="QualityThreshold"/>
+                        <output class="ms-1">@_QualityThreshold</output>
+                    </div>
+                </div>
+            </ParametersSection>
+        </div>
+
+    </div>
+
+</div>
+
+<script src="js/image.js"></script>
+<Modal @ref="_Modal"></Modal>
+
+
+@code {
+    readonly ImageBoxViewModel[] _ViewModels = [new ImageBoxViewModel(), new ImageBoxViewModel()];
+    readonly ImageBox[] _ImageBoxes = new ImageBox[2];
+    private int ImageCount => _ViewModels.Count(x => !string.IsNullOrEmpty(x.ImgName));
+    private float _SimilarityThreshold = 0.5f;
+    private float _QualityThreshold = 0;
+    private string _KinshipEmbedderName = EnumMemberNames.GetName(EmbedderName.BB);
+    private DotNetObjectReference<Family> _objRef;
+
+
+    [JSInvokable]
+    public async Task VideoCaptured(JsonElement value)
+    {
+        int index = ImageCount % 2;
+        _ViewModels[index].FaceNum = -2;
+        var response = value.Deserialize<UploadImagesResponse?>();
+        if (response is not null)
+        {
+            await _ImageBoxes[index].UpdateFromResponse(response);
+        }
+
+        await SaveState();
+        await OnLoadingFinishedAsync();
+        StateHasChanged();
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        for (int i = 0; i < _ViewModels.Length; i++)
+        {
+            _ViewModels[i] = await LocalStorage.GetItemAsync<ImageBoxViewModel>($"imageBox{i + 1}") ?? new ImageBoxViewModel();
+        }
+
+        if (Layout != null)
+            Layout.ImageBoxChanged += OnImageBoxChanged;
+        _SimilarityThreshold = await LocalStorage.GetItemAsync<float>("similarity_thresh");
+        _QualityThreshold = await LocalStorage.GetItemAsync<float>("quality_thresh");
+
+    }
+
+    private async void OnImageBoxChanged(object? sender, ImageBoxChangedEventArgs e)
+    {
+        if (e.Index < _ViewModels.Length)
+        {
+            _ViewModels[e.Index].CopyFrom(e.ViewModel);
+        }
+
+        await SaveState();
+        StateHasChanged();
+    }
+
+    private async Task StartVideoCapture()
+    {
+        _objRef = DotNetObjectReference.Create(this);
+        await JS.InvokeVoidAsync("startFaceCapture", _objRef);
+        await OnLoadingStartedAsync();
+    }
+
+
+    private async Task SaveState()
+    {
+        for (int i = 0; i < _ViewModels.Length; i++)
+        {
+            await LocalStorage.SetItemAsync($"imageBox{i + 1}", _ViewModels[i]);
+        }
+
+        await LocalStorage.SetItemAsync("similarity_thresh", _SimilarityThreshold);
+        await LocalStorage.SetItemAsync("quality_thresh", _QualityThreshold);
+    }
+
+    private async Task OnRefresh()
+    {
+        if (ImageCount == 1 && !string.IsNullOrEmpty(_ViewModels[1].ImgName))
+        {
+            (_ViewModels[1], _ViewModels[0]) = (_ViewModels[0], _ViewModels[1]);
+            StateHasChanged();
+            await _ImageBoxes[0].LoadImage();
+            await _ImageBoxes[1].OnClearClicked();
+        }
+
+        await SaveState();
+        StateHasChanged();
+    }
+
+    private async Task CompareFamily()
+    {
+        if (!string.IsNullOrEmpty(_ViewModels[0].ImgName))
+        {
+            var response = await ImageProcessing
+                .CompareKinship(_ViewModels[0].ImgName, _ViewModels[0].FaceNum, _ViewModels[1].ImgName, _ViewModels[1].FaceNum
+                    , _SimilarityThreshold, (float)_QualityThreshold, EnumMemberNames.ParseEnum<EmbedderName>(_KinshipEmbedderName)
+                    , Layout?.Models ?? new ModelsConfig());
+            if (response.IsT1)
+            {
+                await ShowError(response.AsT1);
+            }
+
+            var valid = response.AsT0;
+            await _Modal.Show([
+                $"Kinship similarity is {valid.AverageSimilarity:f4}," +
+                $" with {valid.Cluster1Count} images for the first person and " +
+                $"{valid.Cluster2Count} images for the second person"
+            ], []);
+        }
+    }
+    public override void Dispose()
+    {
+        if (Layout != null)
+        {
+            Layout.ImageBoxChanged -= OnImageBoxChanged;
+        }
+        _objRef.Dispose();
+    }
+
+}

@@ -1,0 +1,122 @@
+﻿@using FaceRecognition.UI.ClassLib.Models.EventArgs
+@using FaceRecognition.UI.ClassLib.Utilities
+@inject IJSRuntime JS
+@inject ApiSettings settings
+    <style>
+
+        .face-image {
+            aspect-ratio: 1 / 1;
+            object-fit: cover;
+        }
+        .quality-bar {
+            height: 10px;
+        }
+    </style>
+<div class="offcanvas offcanvas-end" tabindex="-1" id="offcanvasEnd" aria-labelledby="offcanvasEndLabel">
+    <div class="offcanvas-header">
+        <h5 class="offcanvas-title" id="faceDetailsLabel">Face Details</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+    </div>
+    <div class="offcanvas-body">
+        <div class="mb-4">
+            <img class="w-100" src="@($"{settings.URL}/static/{EnumMemberNames.GetName(Layout.Models.DetectorName)}/{_FileName}")"
+                @onclick="FaceClicked" />
+        </div>
+        <div class="mb-3">
+            <p class="text-muted mb-1">Image Name</p>
+            <p class="fw-bold">@_FileName</p>
+        </div>
+        <div class="row mb-3">
+            <div class="col-6">
+                <p class="text-muted mb-1">Age</p>
+                <p class="fs-4 fw-bold">@_Face.Age</p>
+            </div>
+            <div class="col-6">
+                <p class="text-muted mb-1">Gender</p>
+                <p class="fs-4 fw-bold">@_Face.Gender</p>
+            </div>
+        </div>
+        <div class="mb-3">
+            <p class="text-muted mb-1">Face Quality</p>
+            <div class="d-flex align-items-center">
+                <div class="progress flex-grow-1 me-2 quality-bar">
+                    <div class="progress-bar" role="progressbar" style="width: @(_Face.Quality*100/5)%;"
+                        aria-valuenow=@_Face.Quality aria-valuemin="0" aria-valuemax="5"></div>
+                </div>
+                <span class="fw-bold">@_Face.Quality</span>
+            </div>
+        </div>
+        <div class="d-flex flex-column justify-content-center">
+            @if (_Editing)
+            {
+                <div class="d-flex h3 text-black">
+                    <div class="mx-2">Cluster Id:</div>
+                    <input @bind="_TempText" class="w-50" @bind:event="oninput" />
+                </div>
+                <button class="btn btn-success m-1" @onclick="ConfirmClicked">Confirm</button>
+                <button class="btn btn-danger m-1" @onclick="CancelClicked">Cancel</button>
+            }
+            else
+            {
+                <div class="d-flex h3 text-black">
+
+                    <div class="">Cluster Id: @_Face.GroupId</div>
+                    <div class="editButton btn px-1" @onclick="EditBtnClicked">
+                        <i class="fas fa-pen "></i>
+                    </div>
+                </div>
+
+            }
+        </div>
+    </div>
+
+</div>
+
+
+@code {
+    string _FileName;
+    FaceInfo? _Face;
+    bool _Editing = false;
+    string? _TempText;
+    [CascadingParameter] public MainLayoutViewModel? Layout { get; set; }
+    [Parameter]
+    public EventCallback<ClusterChangedEventArgs> OnClusterChanged { get; set; }
+
+    public async Task Show(string filename, FaceInfo face)
+    {
+        _FileName = filename;
+        _Face = face;
+        StateHasChanged();
+        await JS.InvokeVoidAsync("showOffCanvas");
+    }
+
+    private async Task FaceClicked()
+    {
+        (string imgName, int faceNum) = _FileName.ExtractImageParams();
+
+
+        var path = $"{settings.URL}/pool/{imgName}";
+
+        await JS.InvokeVoidAsync("openFaceImage", _Face.BBox, faceNum, path);
+    }
+    private void EditBtnClicked()
+    {
+        _TempText = _Face?.GroupId ?? "";
+        _Editing = true;
+        StateHasChanged();
+    }
+
+    private void CancelClicked()
+    {
+        _TempText = null;
+        _Editing = false;
+        StateHasChanged();
+    }
+    private async Task ConfirmClicked()
+    {
+        _Editing = false;
+        (string imgName, int faceNum) = _FileName.ExtractImageParams();
+        await OnClusterChanged.InvokeAsync(new ClusterChangedEventArgs(imgName, faceNum, _Face?.GroupId ?? "", _TempText));
+        _Face.GroupId = _TempText;
+    }
+}

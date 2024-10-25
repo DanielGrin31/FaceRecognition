@@ -1,0 +1,204 @@
+@page "/gallery"
+@using FaceRecognition.UI.ClassLib.Services
+@using FaceRecognition.UI.ClassLib.Models.EventArgs
+@using FaceRecognition.UI.ClassLib.Utilities
+@inherits BasePage
+@inject IImageClusteringService ImageClustering
+@inject IImageRepositoryService ImageRepo
+<PageTitle>Gallery</PageTitle>
+
+<div class="m-4">
+    <div class="d-flex  my-5">
+        <div class="btn-group" role="group" aria-label="Basic outlined example">
+            <button class="btn btn-dark btn-outline-info @(_ShowPeople ? "" : "active")" @onclick="LoadImages">Images</button>
+            <button class="btn btn-dark  btn-outline-info @(_ShowPeople ? "active" : "")" @onclick="LoadPeople">People</button>
+        </div>
+        @if (_ShowPeople&&_SelectedPeople.Count == 2)
+        {
+            <select class="form-select mx-2 w-auto" name="embedder_name" @bind="_KinshipEmbedderName"
+                    id="embedderNameSelect" aria-label="Floating label select ">
+                
+                @foreach ((EmbedderName embedderName,string memberName) in EmbedderNameHelper.GetKinshipEmbedders())
+                {
+                    <option value="@memberName">@embedderName</option>
+                }
+            </select>
+        }
+    </div>
+    <div id="" class="row m-0 position-relative">
+        <div class="col-12" id="imagesContainer">
+            <div class="row">
+                @if (!_ShowPeople && _Images != null)
+                {
+                    <ImagesList Images="_Images"></ImagesList>
+                }
+                else if (_ShowPeople && _People != null)
+                {
+                    <PeopleList Faces="_People" SelectedPeople="_SelectedPeople" OnClusterClicked="ClusterClicked"></PeopleList>
+                }
+                else
+                {
+                    <div>Loading...</div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+@if (_ShowPeople&&_SelectedPeople.Count == 2)
+{
+    <div class="position-sticky bottom-0  p-5 d-flex justify-content-center mb-5">
+        <button class="btn btn-dark btn-outline-info " @onclick="OnKinshipCompare">Compare Kinship</button>
+    </div>
+}
+
+<ClusterImagesOffcanvas OnKinshipCompareClicked="OnKinshipSelect" @ref="_OffCanvas"></ClusterImagesOffcanvas>
+<Modal @ref="_Modal"></Modal>
+
+@code {
+    private string[]? _Images;
+    private IEnumerable<KeyValuePair<string, string>>? _People;
+    private bool _ShowPeople = false;
+    private ClusterImagesOffcanvas? _OffCanvas;
+    private readonly List<string> _SelectedPeople = new();
+    private string _KinshipEmbedderName = EnumMemberNames.GetName(EmbedderName.BB);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadImages();
+        if (Layout != null)
+        {
+            Layout.DetectorChanged += SetDetector;
+            Layout.EmbedderChanged += SetEmbedder;
+        }
+        await base.OnInitializedAsync();
+    }
+
+    private async void SetDetector(object? sender, DetectorChangedEventArgs e)
+    {
+        if (_ShowPeople)
+        {
+            await LoadPeople();
+        }
+        else
+        {
+            await LoadImages();
+        }
+    }
+
+    private async void SetEmbedder(object? sender, EmbedderChangedEventArgs e)
+    {
+        if (_ShowPeople)
+        {
+            await LoadPeople();
+        }
+        else
+        {
+            await LoadImages();
+        }
+    }
+
+
+
+    private async Task LoadImages()
+    {
+        var result = await ImageRepo.GetAllFaces(Layout?.Models ?? new ModelsConfig());
+        if (result.IsT1)
+        {
+            await ShowError(result.AsT1);
+        }
+        else
+        {
+            _ShowPeople = false;
+            _Images = result.AsT0.ToArray();
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadPeople()
+    {
+        var result = await ImageClustering.GetPeople(Layout?.Models ?? new ModelsConfig());
+        if (result.IsT1)
+        {
+            await ShowError(result.AsT1);
+        }
+        else
+        {
+            if (result.AsT0.Count > 0)
+            {
+                _ShowPeople = true;
+                _People = result.AsT0;
+                StateHasChanged();
+            }
+            else
+            {
+                await ShowError($"No clusters found for Detector:{Layout.Models.DetectorName} Embedder:{Layout.Models.EmbedderName}");
+            }
+        }
+    }
+
+    private async Task ClusterClicked(string clusterId)
+    {
+        var result = await ImageClustering.GetGroupImages(clusterId, Layout?.Models ?? new ModelsConfig());
+        if (result.IsT1)
+        {
+            await ShowError(result.AsT1);
+        }
+        else
+        {
+            await _OffCanvas.Show(clusterId, result.AsT0);
+        }
+    }
+
+    private void OnKinshipSelect(string clusterId)
+    {
+        if (_SelectedPeople.Contains(clusterId))
+        {
+            _SelectedPeople.Remove(clusterId);
+        }
+        else if (_SelectedPeople.Count < 2)
+        {
+            _SelectedPeople.Add(clusterId);
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task OnKinshipCompare()
+    {
+        if (_SelectedPeople.Count != 2)
+        {
+            await ShowError("Select Two Clusters!");
+            return;
+        }
+
+        var result = await ImageClustering
+            .ComparePeopleByKinship(_SelectedPeople[0], _SelectedPeople[1],
+                Layout.Models, EnumMemberNames.ParseEnum<EmbedderName>(_KinshipEmbedderName));
+        if (result.IsT1)
+        {
+            await ShowError(result.AsT1);
+        }
+        else
+        {
+            var valid = result.AsT0;
+            await _Modal.Show([
+                $"Kinship similarity is {valid.AverageSimilarity:f4}," +
+                $" with {valid.Cluster1Count} images for the first person and " +
+                $"{valid.Cluster2Count} images for the second person"
+            ], []);
+        }
+
+        StateHasChanged();
+    }
+
+    public override void Dispose()
+    {
+        if (Layout != null)
+        {
+            Layout.DetectorChanged -= SetDetector;
+            Layout.EmbedderChanged -= SetEmbedder;
+        }
+        base.Dispose();
+    }
+
+}

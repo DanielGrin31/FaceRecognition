@@ -1,0 +1,65 @@
+@inject IJSRuntime JS;
+@using FaceRecognition.UI.ClassLib.Models.EventArgs
+@using Blazored.LocalStorage
+@implements IDisposable
+@inject ILocalStorageService LocalStorage
+
+
+@code {
+    [CascadingParameter] public MainLayoutViewModel? Layout { get; set; }
+    protected Modal _Modal = new Modal();
+    protected bool _Loading = false;
+
+    protected virtual async Task ShowError(Error error)
+    {
+        await _Modal.Show([], [error.Reason]);
+    }
+
+    protected virtual Task ShowError(string error)
+    {
+        return ShowError(new Error(error));
+    }
+
+    protected virtual async Task OnLoadingStartedAsync()
+    {
+        _Loading = true;
+        await JS.InvokeVoidAsync("setButtonsState", false);
+    }
+
+    protected virtual async Task OnLoadingFinishedAsync()
+    {
+        _Loading = false;
+        await JS.InvokeVoidAsync("setButtonsState", true);
+    }
+
+    protected virtual  Task SaveState()
+    {
+        return Task.CompletedTask;
+    }
+
+
+    protected override Task OnInitializedAsync()
+    {
+        if (Layout != null)
+        {
+            Layout.ImageBoxChanged += OnImageBoxChanged;
+        }
+        return base.OnInitializedAsync();
+    }
+
+    private async void OnImageBoxChanged(object? sender, ImageBoxChangedEventArgs e)
+    {
+        await LocalStorage.SetItemAsync($"imageBox{e.Index + 1}", e.ViewModel);
+    }
+    public virtual void Dispose()
+    {
+        if (Layout!=null)
+        {
+            Layout.ImageBoxChanged -= OnImageBoxChanged;
+        }
+    }
+
+  
+
+
+}
